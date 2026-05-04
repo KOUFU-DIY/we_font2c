@@ -10,8 +10,14 @@ set "OUT=%ROOT%\font2c.exe"
 set "ICON_FILE=%ROOT%\builder\icon_64x64.ico"
 set "MSYS2_BIN="
 
-for %%R in (C:\msys64 D:\msys64 %HOMEDRIVE%\msys64) do (
-    if not defined MSYS2_BIN if exist "%%~R\mingw64\bin\gcc.exe" set "MSYS2_BIN=%%~R\mingw64\bin"
+if defined MSYS2_LOCATION if exist "%MSYS2_LOCATION%\mingw64\bin\gcc.exe" (
+    set "MSYS2_BIN=%MSYS2_LOCATION%\mingw64\bin"
+)
+
+if not defined MSYS2_BIN (
+    for %%R in (C:\msys64 D:\msys64 %HOMEDRIVE%\msys64) do (
+        if not defined MSYS2_BIN if exist "%%~R\mingw64\bin\gcc.exe" set "MSYS2_BIN=%%~R\mingw64\bin"
+    )
 )
 
 if defined MSYS2_BIN (
