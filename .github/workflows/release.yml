@@ -66,3 +66,4 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          overwrite_files: true
