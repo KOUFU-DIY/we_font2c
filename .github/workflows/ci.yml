@@ -20,6 +20,8 @@ jobs:
           install: >-
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-freetype
+            mingw-w64-x86_64-bzip2
+            mingw-w64-x86_64-libpng
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-binutils
       - name: Build Windows binary
