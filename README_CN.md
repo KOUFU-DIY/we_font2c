@@ -16,6 +16,8 @@
 
 JSON 相关说明放在 `input/README_CN.md`。
 构建相关说明放在 `builder/README_CN.md`。
+更新记录放在 `CHANGELOG.md`。
+参与说明放在 `CONTRIBUTING.md`。
 
 ## 仓库发布说明
 

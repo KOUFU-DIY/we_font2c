@@ -16,6 +16,8 @@ This document only describes:
 
 JSON details are in `input/README.md`.
 Build details are in `builder/README.md`.
+Release notes are in `CHANGELOG.md`.
+Contribution notes are in `CONTRIBUTING.md`.
 
 ## Repository Notes
 
