@@ -11,9 +11,8 @@ Highlights:
 - `internal` and `external` deployment modes
 - `.c/.h` and `.bin` export support
 - MIT licensed
-- GitHub Actions CI for Windows and Linux
+- GitHub Actions CI for Windows and macOS
 
 ## 0.2.0
 
 Internal development release.
-

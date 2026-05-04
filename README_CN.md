@@ -25,8 +25,8 @@ JSON 相关说明放在 `input/README_CN.md`。
 - `fonts/` 目录在仓库中默认保持为空，请在本地自行放入字体，并在公开分发前确认字体授权。
 - `output/` 和根目录下的 `font2c.exe` 属于本地构建产物，默认通过 Git 忽略。
 - 本仓库采用 MIT License，详见 [LICENSE](LICENSE)。
-- 已启用 Windows 和 Linux 的持续集成构建。
-- 推送 `v*` 标签会自动触发 Release 编译，生成 Windows 和 Linux 二进制。
+- 已启用 Windows 和 macOS 的持续集成构建。
+- 推送 `v*` 标签会自动触发 Release 编译，生成 Windows 和 macOS 二进制。
 
 ## 快速开始
 

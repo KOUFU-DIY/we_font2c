@@ -25,8 +25,8 @@ Contribution notes are in `CONTRIBUTING.md`.
 - `fonts/` is intentionally empty in the repository. Add your own fonts locally and confirm the font license before redistribution.
 - `output/` and `font2c.exe` are local build artifacts and are ignored by Git by default.
 - This repository is licensed under the MIT License. See [LICENSE](LICENSE).
-- Continuous integration is enabled for Windows and Linux builds.
-- Pushing a `v*` tag triggers an automated release build with Windows and Linux binaries.
+- Continuous integration is enabled for Windows and macOS builds.
+- Pushing a `v*` tag triggers an automated release build with Windows and macOS binaries.
 
 ## Quick Start
 

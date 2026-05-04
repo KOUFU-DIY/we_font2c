@@ -17,7 +17,7 @@ cmd /c builder\build_win.cmd
 .\font2c.exe build-all .\input -o .\output
 ```
 
-Linux / POSIX:
+macOS / POSIX:
 
 ```txt
 bash builder/build_posix.sh
@@ -33,4 +33,3 @@ Please include:
 - the JSON config you used
 - the source font file name
 - the exact error message or unexpected output
-

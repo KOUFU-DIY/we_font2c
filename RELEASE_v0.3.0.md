@@ -10,14 +10,14 @@
 - `internal` and `external` deployment modes
 - `.c/.h` and `.bin` export support
 - MIT licensed
-- GitHub Actions CI for Windows and Linux
+- GitHub Actions CI for Windows and macOS
 
 ## Downloads
 
 Release assets are generated automatically by GitHub Actions when a `v*` tag is pushed.
 
 - Windows: `font2c-v0.3.0-windows.exe`
-- Linux: `font2c-v0.3.0-linux`
+- macOS: `font2c-v0.3.0-macos`
 
 ## Notes
 

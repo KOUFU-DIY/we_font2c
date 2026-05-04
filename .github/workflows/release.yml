@@ -11,9 +11,6 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
@@ -25,8 +22,10 @@ jobs:
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-binutils
       - name: Build Windows binary
-        run: cmd /c builder\build_win.cmd
+        shell: cmd
+        run: builder\build_win.cmd
       - name: Stage Windows asset
+        shell: bash
         run: |
           mkdir -p dist
           cp font2c.exe "dist/font2c-${GITHUB_REF_NAME}-windows.exe"
@@ -35,27 +34,31 @@ jobs:
           name: font2c-windows
           path: dist/font2c-*-windows.exe
 
-  build-linux:
-    runs-on: ubuntu-latest
+  build-macos:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libfreetype6-dev
-      - name: Build Linux binary
+        run: |
+          brew update
+          brew install pkg-config freetype
+          echo "PKG_CONFIG_PATH=$(brew --prefix freetype)/lib/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
+      - name: Build macOS binary
         run: bash builder/build_posix.sh
-      - name: Stage Linux asset
+      - name: Stage macOS asset
+        shell: bash
         run: |
           mkdir -p dist
-          cp font2c "dist/font2c-${GITHUB_REF_NAME}-linux"
+          cp font2c "dist/font2c-${GITHUB_REF_NAME}-macos"
       - uses: actions/upload-artifact@v4
         with:
-          name: font2c-linux
-          path: dist/font2c-*-linux
+          name: font2c-macos
+          path: dist/font2c-*-macos
 
   publish:
     needs:
       - build-windows
-      - build-linux
+      - build-macos
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
