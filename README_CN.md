@@ -1,5 +1,8 @@
 # font2c
 
+[![CI](https://github.com/KOUFU-DIY/we_font2c/actions/workflows/ci.yml/badge.svg)](https://github.com/KOUFU-DIY/we_font2c/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 `font2c` 是一个面向嵌入式项目的单文件字体取模工具。
 它可以把 `ttf` / `otf` / `ttc` 字体导出为：
 
@@ -19,6 +22,7 @@ JSON 相关说明放在 `input/README_CN.md`。
 - `fonts/` 目录在仓库中默认保持为空，请在本地自行放入字体，并在公开分发前确认字体授权。
 - `output/` 和根目录下的 `font2c.exe` 属于本地构建产物，默认通过 Git 忽略。
 - 本仓库采用 MIT License，详见 [LICENSE](LICENSE)。
+- 已启用 Windows 和 Linux 的持续集成构建。
 
 ## 快速开始
 

@@ -1,5 +1,8 @@
 # font2c
 
+[![CI](https://github.com/KOUFU-DIY/we_font2c/actions/workflows/ci.yml/badge.svg)](https://github.com/KOUFU-DIY/we_font2c/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 `font2c` is a standalone bitmap font extraction tool for embedded projects.
 It converts `ttf` / `otf` / `ttc` fonts into:
 
@@ -19,6 +22,7 @@ Build details are in `builder/README.md`.
 - `fonts/` is intentionally empty in the repository. Add your own fonts locally and confirm the font license before redistribution.
 - `output/` and `font2c.exe` are local build artifacts and are ignored by Git by default.
 - This repository is licensed under the MIT License. See [LICENSE](LICENSE).
+- Continuous integration is enabled for Windows and Linux builds.
 
 ## Quick Start
 
