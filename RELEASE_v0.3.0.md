@@ -12,11 +12,19 @@
 - MIT licensed
 - GitHub Actions CI for Windows and Linux
 
+## Downloads
+
+Release assets are generated automatically by GitHub Actions when a `v*` tag is pushed.
+
+- Windows: `font2c-v0.3.0-windows.exe`
+- Linux: `font2c-v0.3.0-linux`
+
 ## Notes
 
 - `fonts/` is intentionally empty in the repository.
 - Please confirm font redistribution rights before publishing generated assets.
 - `external` mode stores glyph descriptors and bitmap data in the `.bin` payload.
+- Generated fonts are based on the selected input font and JSON config.
 
 ## Usage
 

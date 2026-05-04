@@ -1,6 +1,7 @@
 # font2c
 
 [![CI](https://github.com/KOUFU-DIY/we_font2c/actions/workflows/ci.yml/badge.svg)](https://github.com/KOUFU-DIY/we_font2c/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/KOUFU-DIY/we_font2c)](https://github.com/KOUFU-DIY/we_font2c/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 `font2c` is a standalone bitmap font extraction tool for embedded projects.
