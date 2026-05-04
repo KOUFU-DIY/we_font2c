@@ -1,0 +1,26 @@
+/font2c.exe
+/output/*
+!/output/.gitkeep
+/fonts/*
+!/fonts/.gitkeep
+!/fonts/README.md
+!/fonts/README_CN.md
+/builder/testdata/*.exe
+
+# Common build artifacts
+*.obj
+*.o
+*.a
+*.lib
+*.dll
+*.exp
+*.pdb
+*.ilk
+*.log
+*.tmp
+
+# Editor / OS
+.vs/
+.vscode/
+Thumbs.db
+Desktop.ini

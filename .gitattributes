@@ -1,0 +1,9 @@
+* text=auto
+
+*.bin binary
+*.exe binary
+*.ico binary
+*.res binary
+*.ttf binary
+*.otf binary
+*.ttc binary
