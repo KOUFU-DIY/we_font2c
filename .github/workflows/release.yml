@@ -25,7 +25,8 @@ jobs:
             mingw-w64-x86_64-pkgconf
             mingw-w64-x86_64-binutils
       - name: Build Windows binary
-        run: cmd /c builder\build_win.cmd
+        shell: cmd
+        run: builder\build_win.cmd
       - name: Stage Windows asset
         run: |
           mkdir -p dist
