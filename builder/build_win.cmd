@@ -8,27 +8,32 @@ set "RC_FILE=%ROOT%\builder\font2c.rc"
 set "RES_FILE=%ROOT%\builder\font2c_icon.res"
 set "OUT=%ROOT%\font2c.exe"
 set "ICON_FILE=%ROOT%\builder\icon_64x64.ico"
+set "MSYS2_BIN="
+
+for %%R in (C:\msys64 D:\msys64 %HOMEDRIVE%\msys64) do (
+    if not defined MSYS2_BIN if exist "%%~R\mingw64\bin\gcc.exe" set "MSYS2_BIN=%%~R\mingw64\bin"
+)
 
 if defined CC (
     set "CC=%CC%"
-) else if exist "D:\msys64\mingw64\bin\gcc.exe" (
-    set "CC=D:\msys64\mingw64\bin\gcc.exe"
+) else if defined MSYS2_BIN (
+    set "CC=%MSYS2_BIN%\gcc.exe"
 ) else (
     set "CC=gcc"
 )
 
 if defined PKG_CONFIG (
     set "PKG_CONFIG=%PKG_CONFIG%"
-) else if exist "D:\msys64\mingw64\bin\pkg-config.exe" (
-    set "PKG_CONFIG=D:\msys64\mingw64\bin\pkg-config.exe"
+) else if defined MSYS2_BIN (
+    set "PKG_CONFIG=%MSYS2_BIN%\pkg-config.exe"
 ) else (
     set "PKG_CONFIG=pkg-config"
 )
 
 if defined WINDRES (
     set "WINDRES=%WINDRES%"
-) else if exist "D:\msys64\mingw64\bin\windres.exe" (
-    set "WINDRES=D:\msys64\mingw64\bin\windres.exe"
+) else if defined MSYS2_BIN (
+    set "WINDRES=%MSYS2_BIN%\windres.exe"
 ) else (
     set "WINDRES=windres"
 )

@@ -11,6 +11,9 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
       - uses: msys2/setup-msys2@v2
@@ -25,7 +28,6 @@ jobs:
         shell: cmd
         run: builder\build_win.cmd
       - name: Stage Windows asset
-        shell: bash
         run: |
           mkdir -p dist
           cp font2c.exe "dist/font2c-${GITHUB_REF_NAME}-windows.exe"
