@@ -14,4 +14,4 @@ LIBS=$("$PKG_CONFIG" --libs freetype2)
 
 exec "$CC" -std=c11 -O2 -Wall -Wextra -pedantic -I"$INC_DIR" $CFLAGS \
     "$SRC_DIR/common.c" "$SRC_DIR/json_config.c" "$SRC_DIR/font_build.c" "$SRC_DIR/main.c" \
-    -o "$OUT" $LIBS -lstdc++
+    -o "$OUT" $LIBS
