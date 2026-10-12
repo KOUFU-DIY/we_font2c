@@ -316,6 +316,67 @@ bool is_scalar_value(uint32_t codepoint)
     return true;
 }
 
+bool utf8_decode_next(const char *text, size_t length, size_t *offset, uint32_t *out_codepoint, char *error, size_t error_cap)
+{
+    unsigned char first;
+    uint32_t codepoint;
+    size_t remaining;
+
+    if (*offset >= length) {
+        return failf(error, error_cap, "unexpected end of UTF-8 string");
+    }
+
+    first = (unsigned char)text[*offset];
+    if (first < 0x80) {
+        *out_codepoint = first;
+        *offset += 1;
+        return true;
+    }
+
+    if ((first & 0xE0) == 0xC0) {
+        remaining = 1;
+        codepoint = first & 0x1F;
+        if (codepoint == 0) {
+            return failf(error, error_cap, "invalid overlong UTF-8 sequence");
+        }
+    } else if ((first & 0xF0) == 0xE0) {
+        remaining = 2;
+        codepoint = first & 0x0F;
+    } else if ((first & 0xF8) == 0xF0) {
+        remaining = 3;
+        codepoint = first & 0x07;
+    } else {
+        return failf(error, error_cap, "invalid UTF-8 leading byte 0x%02X", first);
+    }
+
+    if (*offset + remaining >= length + 1) {
+        return failf(error, error_cap, "truncated UTF-8 sequence");
+    }
+
+    while (remaining > 0) {
+        unsigned char next = (unsigned char)text[*offset + 1];
+        if ((next & 0xC0) != 0x80) {
+            return failf(error, error_cap, "invalid UTF-8 continuation byte 0x%02X", next);
+        }
+        codepoint = (codepoint << 6) | (uint32_t)(next & 0x3F);
+        ++(*offset);
+        --remaining;
+    }
+    ++(*offset);
+
+    if (!is_scalar_value(codepoint)) {
+        return failf(error, error_cap, "invalid Unicode codepoint U+%X in UTF-8 string", codepoint);
+    }
+    if ((codepoint <= 0x7F && first >= 0x80) ||
+        (codepoint <= 0x7FF && (first & 0xF0) == 0xE0) ||
+        (codepoint <= 0xFFFF && (first & 0xF8) == 0xF0)) {
+        return failf(error, error_cap, "invalid overlong UTF-8 sequence");
+    }
+
+    *out_codepoint = codepoint;
+    return true;
+}
+
 const char *path_filename(const char *path)
 {
     const char *cursor = path;
@@ -633,12 +694,111 @@ void print_usage(FILE *stream)
             "Usage:\n"
             "  font2c build <config.json> [-o <output_dir>]\n"
             "  font2c build-all <input_dir> [-o <output_dir>]\n"
+            "  font2c scan --src <dir> [--src <dir> ...] [scan options]\n"
             "  font2c --help\n"
             "  font2c --version\n"
+            "\n"
+            "Scan options:\n"
+            "  --ext <list>     comma-separated source extensions (default: c,h)\n"
+            "  --extra <file>   UTF-8 text file with extra chars, repeatable\n"
+            "  --json <config>  merge scanned chars into the config's charset.chars\n"
+            "  --prune          with --json, drop non-ASCII chars not seen in the scan\n"
+            "  --out <file>     write scanned chars to a UTF-8 text file\n"
+            "  --dry-run        report only, write nothing\n"
             "\n"
             "With no arguments, font2c runs:\n"
             "  font2c build-all input -o output\n",
             FONT2C_VERSION);
+}
+
+static bool append_cli_string(const char ***items, size_t *count, size_t *capacity, const char *value, char *error, size_t error_cap)
+{
+    if (*count == *capacity) {
+        size_t new_capacity = *capacity == 0 ? 8 : (*capacity * 2);
+        const char **new_items = (const char **)realloc((void *)*items, new_capacity * sizeof(*new_items));
+        if (new_items == NULL) {
+            return failf(error, error_cap, "out of memory");
+        }
+        *items = new_items;
+        *capacity = new_capacity;
+    }
+    (*items)[(*count)++] = value;
+    return true;
+}
+
+void free_cli_options(CliOptions *options)
+{
+    free((void *)options->scan_srcs);
+    free((void *)options->scan_extras);
+    options->scan_srcs = NULL;
+    options->scan_src_count = 0;
+    options->scan_extras = NULL;
+    options->scan_extra_count = 0;
+}
+
+static bool parse_scan_cli(int argc, char **argv, CliOptions *options, char *error, size_t error_cap)
+{
+    int argi = 2;
+    size_t src_capacity = 0;
+    size_t extra_capacity = 0;
+
+    options->mode = CLI_MODE_SCAN;
+    options->scan_ext_list = "c,h";
+
+    while (argi < argc) {
+        const char *arg = argv[argi];
+        if (strcmp(arg, "--src") == 0) {
+            if (argi + 1 >= argc) {
+                return failf(error, error_cap, "missing value after --src");
+            }
+            if (!append_cli_string(&options->scan_srcs, &options->scan_src_count, &src_capacity, argv[argi + 1], error, error_cap)) {
+                return false;
+            }
+            argi += 2;
+        } else if (strcmp(arg, "--extra") == 0) {
+            if (argi + 1 >= argc) {
+                return failf(error, error_cap, "missing value after --extra");
+            }
+            if (!append_cli_string(&options->scan_extras, &options->scan_extra_count, &extra_capacity, argv[argi + 1], error, error_cap)) {
+                return false;
+            }
+            argi += 2;
+        } else if (strcmp(arg, "--ext") == 0) {
+            if (argi + 1 >= argc) {
+                return failf(error, error_cap, "missing value after --ext");
+            }
+            options->scan_ext_list = argv[argi + 1];
+            argi += 2;
+        } else if (strcmp(arg, "--json") == 0) {
+            if (argi + 1 >= argc) {
+                return failf(error, error_cap, "missing value after --json");
+            }
+            options->scan_json = argv[argi + 1];
+            argi += 2;
+        } else if (strcmp(arg, "--out") == 0) {
+            if (argi + 1 >= argc) {
+                return failf(error, error_cap, "missing value after --out");
+            }
+            options->scan_out = argv[argi + 1];
+            argi += 2;
+        } else if (strcmp(arg, "--prune") == 0) {
+            options->scan_prune = true;
+            ++argi;
+        } else if (strcmp(arg, "--dry-run") == 0) {
+            options->scan_dry_run = true;
+            ++argi;
+        } else {
+            return failf(error, error_cap, "unexpected argument '%s'", arg);
+        }
+    }
+
+    if (options->scan_src_count == 0) {
+        return failf(error, error_cap, "scan requires at least one --src <dir>");
+    }
+    if (options->scan_prune && options->scan_json == NULL) {
+        return failf(error, error_cap, "--prune requires --json");
+    }
+    return true;
 }
 
 bool parse_cli(int argc, char **argv, CliOptions *options, char *error, size_t error_cap)
@@ -660,6 +820,10 @@ bool parse_cli(int argc, char **argv, CliOptions *options, char *error, size_t e
     if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0) {
         options->mode = CLI_MODE_VERSION;
         return true;
+    }
+
+    if (strcmp(argv[1], "scan") == 0) {
+        return parse_scan_cli(argc, argv, options, error, error_cap);
     }
 
     if (strcmp(argv[1], "build") == 0) {

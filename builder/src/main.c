@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static bool ensure_workspace_layout(const char *project_root, char *error, size_t error_cap)
 {
@@ -30,6 +31,17 @@ cleanup:
     return ok;
 }
 
+/* JSON parse errors already start with "<path>:line:col"; everything else
+ * gets the config path prepended so build-all failures are attributable. */
+static void print_build_error(const char *json_path, const char *error)
+{
+    if (strncmp(error, json_path, strlen(json_path)) == 0) {
+        fprintf(stderr, "error: %s\n", error);
+    } else {
+        fprintf(stderr, "error: %s: %s\n", json_path, error);
+    }
+}
+
 int main(int argc, char **argv)
 {
     CliOptions options;
@@ -40,6 +52,7 @@ int main(int argc, char **argv)
     if (!parse_cli(argc, argv, &options, error, sizeof(error))) {
         fprintf(stderr, "error: %s\n\n", error);
         print_usage(stderr);
+        free_cli_options(&options);
         return 1;
     }
 
@@ -50,6 +63,15 @@ int main(int argc, char **argv)
     if (options.mode == CLI_MODE_VERSION) {
         printf("%s\n", FONT2C_VERSION);
         return 0;
+    }
+
+    if (options.mode == CLI_MODE_SCAN) {
+        bool scan_ok = run_scan_command(&options, error, sizeof(error));
+        if (!scan_ok) {
+            fprintf(stderr, "error: %s\n", error);
+        }
+        free_cli_options(&options);
+        return scan_ok ? 0 : 1;
     }
 
     project_root = get_current_directory(error, sizeof(error));
@@ -64,7 +86,7 @@ int main(int argc, char **argv)
 
     if (options.mode == CLI_MODE_BUILD_ONE) {
         if (!build_one_config(project_root, options.input_path, options.output_dir, error, sizeof(error))) {
-            fprintf(stderr, "error: %s\n", error);
+            print_build_error(options.input_path, error);
             goto cleanup;
         }
         printf("built %s -> %s\n", options.input_path, options.output_dir);
@@ -85,7 +107,7 @@ int main(int argc, char **argv)
 
         for (i = 0; i < count; ++i) {
             if (!build_one_config(project_root, files[i], options.output_dir, error, sizeof(error))) {
-                fprintf(stderr, "error: %s\n", error);
+                print_build_error(files[i], error);
                 while (i < count) {
                     free(files[i]);
                     ++i;
@@ -103,5 +125,6 @@ int main(int argc, char **argv)
 
 cleanup:
     free(project_root);
+    free_cli_options(&options);
     return exit_code;
 }

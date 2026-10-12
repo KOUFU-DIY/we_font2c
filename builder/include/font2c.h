@@ -31,6 +31,11 @@ typedef enum DeployMode {
     DEPLOY_EXTERNAL
 } DeployMode;
 
+typedef enum MissingGlyphMode {
+    MISSING_GLYPH_ERROR,
+    MISSING_GLYPH_BOX
+} MissingGlyphMode;
+
 typedef struct FontConfig {
     char *json_path;
     char *json_dir;
@@ -41,6 +46,7 @@ typedef struct FontConfig {
     int font_size;
     int face_index;
     int bpp;
+    MissingGlyphMode missing_glyph;
     DeployMode deploy_mode;
     CodeRange *ranges;
     size_t range_count;
@@ -53,13 +59,23 @@ typedef enum CliMode {
     CLI_MODE_HELP,
     CLI_MODE_VERSION,
     CLI_MODE_BUILD_ONE,
-    CLI_MODE_BUILD_ALL
+    CLI_MODE_BUILD_ALL,
+    CLI_MODE_SCAN
 } CliMode;
 
 typedef struct CliOptions {
     CliMode mode;
     const char *input_path;
     const char *output_dir;
+    const char **scan_srcs;
+    size_t scan_src_count;
+    const char **scan_extras;
+    size_t scan_extra_count;
+    const char *scan_ext_list;
+    const char *scan_json;
+    const char *scan_out;
+    bool scan_prune;
+    bool scan_dry_run;
 } CliOptions;
 
 bool failf(char *error, size_t error_cap, const char *fmt, ...);
@@ -80,8 +96,10 @@ void bb_free(ByteBuffer *buffer);
 
 int ascii_casecmp(const char *lhs, const char *rhs);
 bool is_scalar_value(uint32_t codepoint);
+bool utf8_decode_next(const char *text, size_t length, size_t *offset, uint32_t *out_codepoint, char *error, size_t error_cap);
 
 bool parse_cli(int argc, char **argv, CliOptions *options, char *error, size_t error_cap);
+void free_cli_options(CliOptions *options);
 void print_usage(FILE *stream);
 
 bool file_exists(const char *path);
@@ -99,7 +117,10 @@ char *get_current_directory(char *error, size_t error_cap);
 
 bool parse_font_config_file(const char *json_path, FontConfig *config, char *error, size_t error_cap);
 void free_font_config(FontConfig *config);
+bool rewrite_config_chars_file(const char *json_path, const char *chars_utf8, char *error, size_t error_cap);
 
 bool build_one_config(const char *project_root, const char *json_path, const char *output_dir, char *error, size_t error_cap);
+
+bool run_scan_command(const CliOptions *options, char *error, size_t error_cap);
 
 #endif

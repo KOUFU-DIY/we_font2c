@@ -50,6 +50,9 @@ exe 的一般使用方法见 `../README_CN.md`。
 - `font.size`：像素字号
 - `font.face_index`：可选，默认 `0`，主要给 `.ttc` 使用
 - `render.bpp`：只能是 `1`、`2`、`4`、`8`
+- `render.missing_glyph`：可选，`error`（默认）或 `box`；`error` 表示字体缺少
+  所选码点时构建报错，`box` 表示缺字导出为空心方框占位字形，并在构建结束后
+  打印被替换码点的警告清单
 - `deploy.mode`：只能是 `internal` 或 `external`
 
 ## 字符集规则

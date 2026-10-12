@@ -50,6 +50,10 @@ Minimal example:
 - `font.size`: pixel size
 - `font.face_index`: optional, default `0`, mainly for `.ttc`
 - `render.bpp`: must be `1`, `2`, `4`, or `8`
+- `render.missing_glyph`: optional, `error` (default) or `box`; `error` fails the
+  build when the font lacks a requested codepoint, `box` exports a hollow-box
+  placeholder glyph instead and prints a post-build warning listing every
+  replaced codepoint
 - `deploy.mode`: must be `internal` or `external`
 
 ## Charset Rules

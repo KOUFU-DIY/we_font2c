@@ -14,7 +14,7 @@ Windows:
 
 ```txt
 cmd /c builder\build_win.cmd
-.\font2c.exe build-all .\input -o .\output
+.\windows\font2c.exe build-all .\input -o .\output
 ```
 
 macOS / POSIX:

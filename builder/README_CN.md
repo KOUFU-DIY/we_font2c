@@ -38,7 +38,7 @@ builder\build_win.cmd
 输出：
 
 ```txt
-font2c.exe
+windows\font2c.exe
 ```
 
 说明：

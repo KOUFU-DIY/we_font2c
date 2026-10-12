@@ -33,6 +33,12 @@ typedef struct GlyphTable {
     size_t capacity;
 } GlyphTable;
 
+typedef struct MissingList {
+    uint32_t *items;
+    size_t count;
+    size_t capacity;
+} MissingList;
+
 #ifdef _WIN32
 #define PATH_SEP '\\'
 #else
@@ -593,13 +599,118 @@ static bool render_one_glyph(
     return true;
 }
 
+/* Synthesizes a hollow-box placeholder glyph for a codepoint the font lacks.
+ * The box is fed through the same quantize path as real glyphs, so the output
+ * format is unchanged; CJK-ish codepoints get a full-width advance. */
+static bool render_missing_box(
+    uint32_t codepoint,
+    int font_size,
+    int bpp,
+    int baseline,
+    ByteBuffer *bitmap_buffer,
+    GlyphRecord *out_glyph,
+    char *error,
+    size_t error_cap)
+{
+    FT_Bitmap synthetic;
+    unsigned char *gray = NULL;
+    unsigned char *packed = NULL;
+    size_t packed_size = 0;
+    int advance = codepoint >= 0x2E80u ? font_size : (font_size + 1) / 2;
+    int avail_h = baseline > 2 ? baseline : font_size;
+    int box_w;
+    int box_h;
+    int border;
+    int x;
+    int y;
+
+    if (advance < 2) {
+        advance = 2;
+    }
+    box_w = advance - 2 >= 2 ? advance - 2 : 2;
+    box_h = avail_h - 1 >= 2 ? avail_h - 1 : 2;
+    border = font_size / 16;
+    if (border < 1) {
+        border = 1;
+    }
+
+    gray = (unsigned char *)calloc((size_t)box_w * (size_t)box_h, 1);
+    if (gray == NULL) {
+        return failf(error, error_cap, "out of memory");
+    }
+    for (y = 0; y < box_h; ++y) {
+        for (x = 0; x < box_w; ++x) {
+            if (x < border || x >= box_w - border || y < border || y >= box_h - border) {
+                gray[(size_t)y * (size_t)box_w + (size_t)x] = 0xFF;
+            }
+        }
+    }
+
+    memset(&synthetic, 0, sizeof(synthetic));
+    synthetic.rows = (unsigned int)box_h;
+    synthetic.width = (unsigned int)box_w;
+    synthetic.pitch = box_w;
+    synthetic.buffer = gray;
+    synthetic.num_grays = 256;
+    synthetic.pixel_mode = FT_PIXEL_MODE_GRAY;
+
+    if (!quantize_gray_bitmap(&synthetic, bpp, &packed, &packed_size, error, error_cap)) {
+        free(gray);
+        return false;
+    }
+    free(gray);
+
+    out_glyph->adv_w = (uint16_t)advance;
+    out_glyph->box_w = (uint16_t)box_w;
+    out_glyph->box_h = (uint16_t)box_h;
+    out_glyph->x_ofs = (int16_t)((advance - box_w) / 2);
+    out_glyph->y_ofs = (int16_t)(baseline - box_h);
+    out_glyph->bitmap_offset = 0;
+
+    if (packed_size > 0) {
+        if (bitmap_buffer->length > 0xFFFFFFFFu - packed_size) {
+            free(packed);
+            return failf(error, error_cap, "bitmap data exceeds v1 u32 offset range");
+        }
+        out_glyph->bitmap_offset = (uint32_t)bitmap_buffer->length;
+        if (!bb_append(bitmap_buffer, packed, packed_size, error, error_cap)) {
+            free(packed);
+            return false;
+        }
+    }
+
+    free(packed);
+    return true;
+}
+
+static bool render_glyph_or_box(
+    FT_Face face,
+    uint32_t codepoint,
+    const FontConfig *config,
+    int baseline,
+    ByteBuffer *bitmap_buffer,
+    GlyphRecord *out_glyph,
+    MissingList *missing,
+    char *error,
+    size_t error_cap)
+{
+    if (config->missing_glyph == MISSING_GLYPH_BOX && FT_Get_Char_Index(face, codepoint) == 0) {
+        if (!push_codepoint(&missing->items, &missing->count, &missing->capacity, codepoint, error, error_cap)) {
+            return false;
+        }
+        return render_missing_box(codepoint, config->font_size, config->bpp, baseline, bitmap_buffer, out_glyph, error, error_cap);
+    }
+    return render_one_glyph(face, codepoint, config->bpp, baseline, bitmap_buffer, out_glyph, error, error_cap);
+}
+
 static bool build_glyph_table(
     FT_Face face,
-    int bpp,
+    const FontConfig *config,
     int baseline,
     const NormalizedCharset *charset,
     GlyphTable *glyphs,
     ByteBuffer *bitmap_buffer,
+    MissingList *missing,
     char *error,
     size_t error_cap)
 {
@@ -611,7 +722,7 @@ static bool build_glyph_table(
         uint32_t codepoint;
         for (codepoint = charset->ranges[i].start; codepoint <= charset->ranges[i].end; ++codepoint) {
             GlyphRecord glyph;
-            if (!render_one_glyph(face, codepoint, bpp, baseline, bitmap_buffer, &glyph, error, error_cap) ||
+            if (!render_glyph_or_box(face, codepoint, config, baseline, bitmap_buffer, &glyph, missing, error, error_cap) ||
                 !glyph_table_push(glyphs, glyph, error, error_cap)) {
                 return false;
             }
@@ -623,7 +734,7 @@ static bool build_glyph_table(
 
     for (i = 0; i < charset->sparse_count; ++i) {
         GlyphRecord glyph;
-        if (!render_one_glyph(face, charset->sparse[i], bpp, baseline, bitmap_buffer, &glyph, error, error_cap) ||
+        if (!render_glyph_or_box(face, charset->sparse[i], config, baseline, bitmap_buffer, &glyph, missing, error, error_cap) ||
             !glyph_table_push(glyphs, glyph, error, error_cap)) {
             return false;
         }
@@ -1274,6 +1385,7 @@ bool build_one_config(const char *project_root, const char *json_path, const cha
     GlyphTable glyphs;
     ByteBuffer bitmaps;
     ByteBuffer blob;
+    MissingList missing;
     uint32_t blob_crc32 = 0;
     bool ok = false;
 
@@ -1282,6 +1394,7 @@ bool build_one_config(const char *project_root, const char *json_path, const cha
     memset(&glyphs, 0, sizeof(glyphs));
     memset(&bitmaps, 0, sizeof(bitmaps));
     memset(&blob, 0, sizeof(blob));
+    memset(&missing, 0, sizeof(missing));
     error[0] = '\0';
 
     if (!ensure_directory_recursive(output_dir, error, error_cap) ||
@@ -1324,7 +1437,7 @@ bool build_one_config(const char *project_root, const char *json_path, const cha
         baseline = 0;
     }
 
-    if (!build_glyph_table(face, config.bpp, baseline, &normalized, &glyphs, &bitmaps, error, error_cap)) {
+    if (!build_glyph_table(face, &config, baseline, &normalized, &glyphs, &bitmaps, &missing, error, error_cap)) {
         goto cleanup;
     }
     collect_max_box_size(&glyphs, &max_box_width, &max_box_height);
@@ -1361,9 +1474,24 @@ bool build_one_config(const char *project_root, const char *json_path, const cha
         }
     }
 
+    if (missing.count > 0) {
+        size_t shown = missing.count < 20 ? missing.count : 20;
+        size_t i;
+        fprintf(stderr, "warning: %zu missing glyph%s replaced with box in '%s':",
+                missing.count, missing.count == 1 ? "" : "s", config.json_name);
+        for (i = 0; i < shown; ++i) {
+            fprintf(stderr, " U+%04X", missing.items[i]);
+        }
+        if (missing.count > shown) {
+            fprintf(stderr, " ... (+%zu more)", missing.count - shown);
+        }
+        fprintf(stderr, "\n");
+    }
+
     ok = true;
 
 cleanup:
+    free(missing.items);
     bb_free(&blob);
     bb_free(&bitmaps);
     glyph_table_free(&glyphs);

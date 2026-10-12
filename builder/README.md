@@ -38,7 +38,7 @@ builder\build_win.cmd
 Output:
 
 ```txt
-font2c.exe
+windows\font2c.exe
 ```
 
 Notes:

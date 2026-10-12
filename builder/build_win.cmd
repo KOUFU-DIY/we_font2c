@@ -6,8 +6,10 @@ set "SRC_DIR=%ROOT%\builder\src"
 set "INC_DIR=%ROOT%\builder\include"
 set "RC_FILE=%ROOT%\builder\font2c.rc"
 set "RES_FILE=%ROOT%\builder\font2c_icon.res"
-set "OUT=%ROOT%\font2c.exe"
+set "OUT=%ROOT%\windows\font2c.exe"
 set "ICON_FILE=%ROOT%\builder\icon_64x64.ico"
+
+if not exist "%ROOT%\windows" mkdir "%ROOT%\windows"
 set "MSYS2_BIN="
 
 if defined MSYS2_LOCATION if exist "%MSYS2_LOCATION%\mingw64\bin\gcc.exe" (
@@ -79,7 +81,7 @@ if exist "%ICON_FILE%" (
     set "RESOURCE_OBJ="
 )
 
-"%CC%" -std=c11 -O2 -Wall -Wextra -pedantic -D_CRT_SECURE_NO_WARNINGS -I"%INC_DIR%" %FT_CFLAGS% "%SRC_DIR%\common.c" "%SRC_DIR%\json_config.c" "%SRC_DIR%\font_build.c" "%SRC_DIR%\main.c" %RESOURCE_OBJ% -o "%OUT%" -static -static-libgcc -static-libstdc++ %FT_LIBS% -lstdc++
+"%CC%" -std=c11 -O2 -Wall -Wextra -pedantic -D_CRT_SECURE_NO_WARNINGS -I"%INC_DIR%" %FT_CFLAGS% "%SRC_DIR%\common.c" "%SRC_DIR%\json_config.c" "%SRC_DIR%\scan.c" "%SRC_DIR%\font_build.c" "%SRC_DIR%\main.c" %RESOURCE_OBJ% -o "%OUT%" -static -static-libgcc -static-libstdc++ %FT_LIBS% -lstdc++
 if errorlevel 1 exit /b 1
 
 echo Built %OUT%

@@ -1,5 +1,6 @@
 /font2c.exe
 /font2c
+/windows/
 /output/*
 !/output/.gitkeep
 /fonts/*

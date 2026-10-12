@@ -664,67 +664,6 @@ static bool is_valid_symbol_name(const char *text)
     return true;
 }
 
-static bool utf8_decode_next(const char *text, size_t length, size_t *offset, uint32_t *out_codepoint, char *error, size_t error_cap)
-{
-    unsigned char first;
-    uint32_t codepoint;
-    size_t remaining;
-
-    if (*offset >= length) {
-        return failf(error, error_cap, "unexpected end of UTF-8 string");
-    }
-
-    first = (unsigned char)text[*offset];
-    if (first < 0x80) {
-        *out_codepoint = first;
-        *offset += 1;
-        return true;
-    }
-
-    if ((first & 0xE0) == 0xC0) {
-        remaining = 1;
-        codepoint = first & 0x1F;
-        if (codepoint == 0) {
-            return failf(error, error_cap, "invalid overlong UTF-8 sequence");
-        }
-    } else if ((first & 0xF0) == 0xE0) {
-        remaining = 2;
-        codepoint = first & 0x0F;
-    } else if ((first & 0xF8) == 0xF0) {
-        remaining = 3;
-        codepoint = first & 0x07;
-    } else {
-        return failf(error, error_cap, "invalid UTF-8 leading byte 0x%02X", first);
-    }
-
-    if (*offset + remaining >= length + 1) {
-        return failf(error, error_cap, "truncated UTF-8 sequence");
-    }
-
-    while (remaining > 0) {
-        unsigned char next = (unsigned char)text[*offset + 1];
-        if ((next & 0xC0) != 0x80) {
-            return failf(error, error_cap, "invalid UTF-8 continuation byte 0x%02X", next);
-        }
-        codepoint = (codepoint << 6) | (uint32_t)(next & 0x3F);
-        ++(*offset);
-        --remaining;
-    }
-    ++(*offset);
-
-    if (!is_scalar_value(codepoint)) {
-        return failf(error, error_cap, "invalid Unicode codepoint U+%X in UTF-8 string", codepoint);
-    }
-    if ((codepoint <= 0x7F && first >= 0x80) ||
-        (codepoint <= 0x7FF && (first & 0xF0) == 0xE0) ||
-        (codepoint <= 0xFFFF && (first & 0xF8) == 0xF0)) {
-        return failf(error, error_cap, "invalid overlong UTF-8 sequence");
-    }
-
-    *out_codepoint = codepoint;
-    return true;
-}
-
 static bool push_range(CodeRange **items, size_t *count, size_t *capacity, CodeRange item, char *error, size_t error_cap)
 {
     if (*count == *capacity) {
@@ -812,6 +751,7 @@ bool parse_font_config_file(const char *json_path, FontConfig *config, char *err
 
     memset(config, 0, sizeof(*config));
     config->face_index = 0;
+    config->missing_glyph = MISSING_GLYPH_ERROR;
 
     if (!read_entire_file(json_path, &json_text, NULL, error, error_cap)) {
         goto cleanup;
@@ -907,6 +847,21 @@ bool parse_font_config_file(const char *json_path, FontConfig *config, char *err
     }
     config->bpp = (int)integer_value;
 
+    value = json_object_get(render_obj, "missing_glyph");
+    if (value != NULL) {
+        if (!json_require_string(value, "render.missing_glyph", &string_value, error, error_cap)) {
+            goto cleanup;
+        }
+        if (strcmp(string_value, "error") == 0) {
+            config->missing_glyph = MISSING_GLYPH_ERROR;
+        } else if (strcmp(string_value, "box") == 0) {
+            config->missing_glyph = MISSING_GLYPH_BOX;
+        } else {
+            failf(error, error_cap, "render.missing_glyph must be 'error' or 'box'");
+            goto cleanup;
+        }
+    }
+
     charset_obj = json_object_get(root_obj, "charset");
     if (!json_require_object(charset_obj, "charset", &charset_obj, error, error_cap)) {
         goto cleanup;
@@ -990,6 +945,249 @@ cleanup:
     if (!ok) {
         free_font_config(config);
     }
+    json_free_value(root);
+    free(json_text);
+    return ok;
+}
+
+static bool json_write_indent(StringBuilder *sb, int depth, char *error, size_t error_cap)
+{
+    int i;
+    for (i = 0; i < depth; ++i) {
+        if (!sb_append_cstr(sb, "  ", error, error_cap)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool json_write_string_literal(StringBuilder *sb, const char *text, char *error, size_t error_cap)
+{
+    size_t i;
+    if (!sb_append_char(sb, '"', error, error_cap)) {
+        return false;
+    }
+    for (i = 0; text[i] != '\0'; ++i) {
+        unsigned char ch = (unsigned char)text[i];
+        bool ok;
+        switch (ch) {
+        case '"':
+            ok = sb_append_cstr(sb, "\\\"", error, error_cap);
+            break;
+        case '\\':
+            ok = sb_append_cstr(sb, "\\\\", error, error_cap);
+            break;
+        case '\b':
+            ok = sb_append_cstr(sb, "\\b", error, error_cap);
+            break;
+        case '\f':
+            ok = sb_append_cstr(sb, "\\f", error, error_cap);
+            break;
+        case '\n':
+            ok = sb_append_cstr(sb, "\\n", error, error_cap);
+            break;
+        case '\r':
+            ok = sb_append_cstr(sb, "\\r", error, error_cap);
+            break;
+        case '\t':
+            ok = sb_append_cstr(sb, "\\t", error, error_cap);
+            break;
+        default:
+            if (ch < 0x20) {
+                ok = sb_append_format(sb, error, error_cap, "\\u%04X", (unsigned int)ch);
+            } else {
+                ok = sb_append_char(sb, (char)ch, error, error_cap);
+            }
+            break;
+        }
+        if (!ok) {
+            return false;
+        }
+    }
+    return sb_append_char(sb, '"', error, error_cap);
+}
+
+static bool json_array_is_flat(const JsonArray *array)
+{
+    size_t i;
+    for (i = 0; i < array->count; ++i) {
+        if (array->items[i]->type == JSON_ARRAY || array->items[i]->type == JSON_OBJECT) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool json_write_value(StringBuilder *sb, const JsonValue *value, int depth, char *error, size_t error_cap)
+{
+    size_t i;
+    switch (value->type) {
+    case JSON_NULL:
+        return sb_append_cstr(sb, "null", error, error_cap);
+    case JSON_BOOL:
+        return sb_append_cstr(sb, value->u.boolean_value ? "true" : "false", error, error_cap);
+    case JSON_INTEGER:
+        return sb_append_format(sb, error, error_cap, "%lld", value->u.integer_value);
+    case JSON_STRING:
+        return json_write_string_literal(sb, value->u.string_value, error, error_cap);
+    case JSON_ARRAY: {
+        const JsonArray *array = &value->u.array_value;
+        if (array->count == 0) {
+            return sb_append_cstr(sb, "[]", error, error_cap);
+        }
+        if (json_array_is_flat(array)) {
+            if (!sb_append_char(sb, '[', error, error_cap)) {
+                return false;
+            }
+            for (i = 0; i < array->count; ++i) {
+                if (i > 0 && !sb_append_cstr(sb, ", ", error, error_cap)) {
+                    return false;
+                }
+                if (!json_write_value(sb, array->items[i], depth, error, error_cap)) {
+                    return false;
+                }
+            }
+            return sb_append_char(sb, ']', error, error_cap);
+        }
+        if (!sb_append_cstr(sb, "[\n", error, error_cap)) {
+            return false;
+        }
+        for (i = 0; i < array->count; ++i) {
+            if (!json_write_indent(sb, depth + 1, error, error_cap) ||
+                !json_write_value(sb, array->items[i], depth + 1, error, error_cap)) {
+                return false;
+            }
+            if (!sb_append_cstr(sb, i + 1 < array->count ? ",\n" : "\n", error, error_cap)) {
+                return false;
+            }
+        }
+        return json_write_indent(sb, depth, error, error_cap) && sb_append_char(sb, ']', error, error_cap);
+    }
+    case JSON_OBJECT: {
+        const JsonObject *object = &value->u.object_value;
+        if (object->count == 0) {
+            return sb_append_cstr(sb, "{}", error, error_cap);
+        }
+        if (!sb_append_cstr(sb, "{\n", error, error_cap)) {
+            return false;
+        }
+        for (i = 0; i < object->count; ++i) {
+            if (!json_write_indent(sb, depth + 1, error, error_cap) ||
+                !json_write_string_literal(sb, object->items[i].key, error, error_cap) ||
+                !sb_append_cstr(sb, ": ", error, error_cap) ||
+                !json_write_value(sb, object->items[i].value, depth + 1, error, error_cap)) {
+                return false;
+            }
+            if (!sb_append_cstr(sb, i + 1 < object->count ? ",\n" : "\n", error, error_cap)) {
+                return false;
+            }
+        }
+        return json_write_indent(sb, depth, error, error_cap) && sb_append_char(sb, '}', error, error_cap);
+    }
+    default:
+        return failf(error, error_cap, "unsupported JSON value type");
+    }
+}
+
+static JsonValue *json_object_get_mutable(JsonValue *object, const char *key)
+{
+    size_t i;
+    if (object == NULL || object->type != JSON_OBJECT) {
+        return NULL;
+    }
+    for (i = 0; i < object->u.object_value.count; ++i) {
+        if (strcmp(object->u.object_value.items[i].key, key) == 0) {
+            return object->u.object_value.items[i].value;
+        }
+    }
+    return NULL;
+}
+
+/* chars_utf8 == NULL removes charset.chars; everything else in the file is
+ * preserved, re-serialized with the canonical 2-space layout. */
+bool rewrite_config_chars_file(const char *json_path, const char *chars_utf8, char *error, size_t error_cap)
+{
+    char *json_text = NULL;
+    JsonValue *root = NULL;
+    JsonValue *charset = NULL;
+    JsonObject *charset_obj;
+    StringBuilder sb = {0};
+    size_t i;
+    bool ok = false;
+
+    if (!read_entire_file(json_path, &json_text, NULL, error, error_cap) ||
+        !parse_json_document(json_path, json_text, &root, error, error_cap)) {
+        goto cleanup;
+    }
+    if (root->type != JSON_OBJECT) {
+        failf(error, error_cap, "%s: root must be an object", json_path);
+        goto cleanup;
+    }
+
+    charset = json_object_get_mutable(root, "charset");
+    if (charset == NULL || charset->type != JSON_OBJECT) {
+        failf(error, error_cap, "%s: charset must be an object", json_path);
+        goto cleanup;
+    }
+    charset_obj = &charset->u.object_value;
+
+    for (i = 0; i < charset_obj->count; ++i) {
+        if (strcmp(charset_obj->items[i].key, "chars") == 0) {
+            break;
+        }
+    }
+
+    if (chars_utf8 == NULL) {
+        if (i < charset_obj->count) {
+            free(charset_obj->items[i].key);
+            json_free_value(charset_obj->items[i].value);
+            memmove(charset_obj->items + i,
+                    charset_obj->items + i + 1,
+                    (charset_obj->count - i - 1) * sizeof(*charset_obj->items));
+            --charset_obj->count;
+        }
+    } else {
+        JsonValue *chars_value = json_new_value(JSON_STRING);
+        if (chars_value == NULL) {
+            failf(error, error_cap, "out of memory");
+            goto cleanup;
+        }
+        chars_value->u.string_value = dup_string(chars_utf8);
+        if (chars_value->u.string_value == NULL) {
+            json_free_value(chars_value);
+            failf(error, error_cap, "out of memory");
+            goto cleanup;
+        }
+        if (i < charset_obj->count) {
+            json_free_value(charset_obj->items[i].value);
+            charset_obj->items[i].value = chars_value;
+        } else {
+            char *key = dup_string("chars");
+            if (key == NULL) {
+                json_free_value(chars_value);
+                failf(error, error_cap, "out of memory");
+                goto cleanup;
+            }
+            if (!json_object_push(charset_obj, key, chars_value, error, error_cap)) {
+                free(key);
+                json_free_value(chars_value);
+                goto cleanup;
+            }
+        }
+    }
+
+    if (!json_write_value(&sb, root, 0, error, error_cap) ||
+        !sb_append_char(&sb, '\n', error, error_cap)) {
+        goto cleanup;
+    }
+    if (!write_text_file(json_path, sb.data, sb.length, error, error_cap)) {
+        goto cleanup;
+    }
+
+    ok = true;
+
+cleanup:
+    sb_free(&sb);
     json_free_value(root);
     free(json_text);
     return ok;
