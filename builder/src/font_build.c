@@ -473,8 +473,8 @@ static bool quantize_gray_bitmap(
         *out_size = 0;
         return true;
     }
-    if (bitmap->pixel_mode != FT_PIXEL_MODE_GRAY) {
-        return failf(error, error_cap, "only FT_PIXEL_MODE_GRAY glyph bitmaps are supported in v1");
+    if (bitmap->pixel_mode != FT_PIXEL_MODE_GRAY && bitmap->pixel_mode != FT_PIXEL_MODE_MONO) {
+        return failf(error, error_cap, "only FT_PIXEL_MODE_GRAY and FT_PIXEL_MODE_MONO glyph bitmaps are supported in v1");
     }
 
     row_stride = (((size_t)bitmap->width * (size_t)bpp) + 7u) / 8u;
@@ -493,12 +493,20 @@ static bool quantize_gray_bitmap(
             row_ptr = bitmap->buffer + (size_t)(bitmap->rows - 1 - row) * (size_t)(-bitmap->pitch);
         }
         for (col = 0; col < bitmap->width; ++col) {
-            unsigned int raw = row_ptr[col];
-            unsigned int gray = bitmap->num_grays > 1 ? (raw * 255u) / ((unsigned int)bitmap->num_grays - 1u) : raw;
+            unsigned int gray;
             unsigned int max_value = (1u << bpp) - 1u;
-            unsigned int level = (gray * max_value + 127u) / 255u;
+            unsigned int level;
             size_t byte_index;
             unsigned int shift;
+
+            if (bitmap->pixel_mode == FT_PIXEL_MODE_MONO) {
+                /* 1-bit source, MSB-first: a set bit is full coverage */
+                gray = ((row_ptr[col / 8u] >> (7u - (col & 7u))) & 1u) != 0 ? 255u : 0u;
+            } else {
+                unsigned int raw = row_ptr[col];
+                gray = bitmap->num_grays > 1 ? (raw * 255u) / ((unsigned int)bitmap->num_grays - 1u) : raw;
+            }
+            level = (gray * max_value + 127u) / 255u;
 
             switch (bpp) {
             case 1:
@@ -543,6 +551,10 @@ static bool render_one_glyph(
     size_t error_cap)
 {
     FT_UInt glyph_index = FT_Get_Char_Index(face, codepoint);
+    /* 1bpp always takes FreeType's monochrome path (B/W-targeted hinting plus
+     * the 1-bit rasterizer with dropout control) instead of thresholding an
+     * anti-aliased bitmap, so thin strokes survive at small sizes. */
+    bool mono = bpp == 1;
     unsigned char *packed = NULL;
     size_t packed_size = 0;
     int advance;
@@ -551,10 +563,10 @@ static bool render_one_glyph(
     if (glyph_index == 0) {
         return failf(error, error_cap, "missing glyph U+%04X in source font", codepoint);
     }
-    if (FT_Load_Char(face, codepoint, FT_LOAD_DEFAULT | FT_LOAD_NO_BITMAP) != 0) {
+    if (FT_Load_Char(face, codepoint, FT_LOAD_NO_BITMAP | (mono ? FT_LOAD_TARGET_MONO : FT_LOAD_TARGET_NORMAL)) != 0) {
         return failf(error, error_cap, "failed to load glyph U+%04X", codepoint);
     }
-    if (FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL) != 0) {
+    if (FT_Render_Glyph(face->glyph, mono ? FT_RENDER_MODE_MONO : FT_RENDER_MODE_NORMAL) != 0) {
         return failf(error, error_cap, "failed to render glyph U+%04X", codepoint);
     }
 

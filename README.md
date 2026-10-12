@@ -445,7 +445,7 @@ Recommended validation strategies:
 
 ### Rasterization Rules
 
-All `1bpp / 2bpp / 4bpp / 8bpp` output uses the same pipeline:
+`2bpp / 4bpp / 8bpp` output uses the grayscale pipeline:
 
 1. rasterize glyphs to 8-bit grayscale
 2. quantize grayscale to target `bpp`
@@ -457,6 +457,14 @@ Quantization rule:
 maxv  = (1 << bpp) - 1
 level = (gray * maxv + 127) / 255
 ```
+
+`1bpp` output always uses FreeType's monochrome pipeline instead, with no grayscale thresholding:
+
+1. hint for monochrome output (`FT_LOAD_TARGET_MONO`)
+2. rasterize directly to a 1-bit bitmap (`FT_RENDER_MODE_MONO`, whose dropout control keeps thin strokes)
+3. pack pixels with the rules above
+
+Monochrome hinting can give `adv_w` and box metrics that differ from the same font's grayscale output. FreeType provides full monochrome hinting only for TrueType fonts that contain B/W hints; other fonts may look rougher at small sizes.
 
 ## Notes
 

@@ -446,7 +446,7 @@ bin[6 .. end]
 
 ### 渲染与量化规则
 
-所有 `1bpp / 2bpp / 4bpp / 8bpp` 共用同一条流程：
+`2bpp / 4bpp / 8bpp` 走灰度流程：
 
 1. 先渲染为 8 位灰度
 2. 再量化到目标 `bpp`
@@ -458,6 +458,14 @@ bin[6 .. end]
 maxv  = (1 << bpp) - 1
 level = (gray * maxv + 127) / 255
 ```
+
+`1bpp` 固定改走 FreeType 单色流程，不再对灰度做阈值化：
+
+1. 按单色输出做 hinting（`FT_LOAD_TARGET_MONO`）
+2. 直接光栅化为 1 位位图（`FT_RENDER_MODE_MONO`，其 dropout control 可保留细笔画）
+3. 最后按上面的规则打包像素
+
+单色 hinting 下，`adv_w` 和字框尺寸可能与同一字体的灰度输出不同。FreeType 仅对带黑白 hinting 指令的 TrueType 字体提供完整的单色 hinting，其他字体在小字号下可能较粗糙。
 
 ## 说明
 
